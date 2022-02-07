@@ -22,6 +22,7 @@ class Snake():
         self.snake_shards = []
         self.create_snake()
         self.head = self.snake_shards[0]
+        self.head.shape("arrow")
         self.frame_iteration = 0
         
         
@@ -29,8 +30,9 @@ class Snake():
         """ This functions creates the snake."""    
         for shard in range(3):
             snake = Turtle("square")
-            snake.color("White")
+            snake.color("green")
             snake.penup()
+            snake.speed("fastest")
             snake.setposition(INITIAL_POSITIONS[0]-(20*shard), INITIAL_POSITIONS[1])
             self.snake_shards.append(snake)
 
@@ -90,7 +92,8 @@ class Snake():
         
         #Shard creation:
         snake = Turtle("square")
-        snake.color("White")
+        snake.color("green")
+        snake.speed("fastest")
         snake.penup()
         
         #New shard position:
@@ -125,40 +128,67 @@ class SnakeAI():
         self.snake = Snake()
         self.food = Food()
         self.score = ScoreBoard()
-
+        self.final_reward = 0
+        self.is_eating = None
+        
     def reset_game(self):
 
         self.screen.reset()
         self.__init__()
 
     def play_game(self, action=[]):
-
+          
         self.game_is_over = False
+        
+        # Refresh the food, for the last step.
+        
+        if self.is_eating:
+            self.food.refresh()
+            for shard in self.snake.snake_shards:
+                if self.food.position() == shard.position():
+                    self.food.refresh()
+        
+        
+        ## Move snake:
+        
         self.movement_list = [self.snake.no_turn,
                               self.snake.right_turn, self.snake.left_turn]
 
+        # Direction:
         if np.array_equal(action, [1, 0, 0]):
             self.movement_list[0]()  # No turn
         elif np.array_equal(action, [0, 1, 0]):
             self.movement_list[1]()  # Turn right
         else:  # [0,1,0]
             self.movement_list[2]()  # turn left
-        self.screen.update()
-        time.sleep(0.001)
+        # Steps:
         self.snake.move_snake()
 
-        # Detect colision with food.
-        if self.snake.head.distance(self.food) < 15:
-            self.food.refresh()
-            for shard in self.snake.snake_shards:
-                if self.food.position() == shard.position():
-                    self.food.refresh()
-            self.snake.growth()
+                
+        
+        ## Detect colision with food.
+            
+        if self.snake.head.distance(self.food)<15:
+        #Increase Score
             self.score.increase_score()
+            self.snake.growth()
+            self.snake.frame_iteration = 0
+            self.is_eating = True
+        else:
+            self.is_eating = False    
+        
+            
 
+
+        ## Game over conditions:
+        
         if self.is_collision() or self.snake.frame_iteration > 100 * len(self.snake.snake_shards):
-            self.score.game_over()
+        
+            self.score.game_over() 
             self.game_is_over = True
+        
+        self.screen.update()
+        time.sleep(0.0001)
 
         return self.game_is_over, self.score.score, self.score.reward
 

@@ -3,16 +3,17 @@ import torch.nn as nn
 import torch.optim as optim 
 import torch.nn.functional as F
 import os 
+device = 'cuda'
 
 class Linear_Qnet(nn.Module):
     
     def __init__(self, input_size, hidden_size, output_size):
         super().__init__()
-        self.linear1 = nn.Linear(input_size, hidden_size)
-        self.linear2 = nn.Linear(hidden_size, output_size)
+        self.linear1 = nn.Linear(input_size, hidden_size).to(device)
+        self.linear2 = nn.Linear(hidden_size, output_size).to(device)
         
     def forward(self, x):
-        x = F.relu(self.linear1(x))
+        x = F.relu(self.linear1(x)).to(device)
         x = self.linear2(x)
         return x
     
@@ -24,7 +25,7 @@ class Linear_Qnet(nn.Module):
         
         file_name = os.path.join(model_folder_path, file_name)
         
-        torch.save(self.state_dict(), file_name)    
+        torch.save(self.state_dict(), file_name) 
     
     def load(self, file_name='model.pth'):
         model_folder_path = './model'
@@ -47,23 +48,23 @@ class QTrainer:
         self.gamma = gamma
         self.model = model 
         self.optimizer = optim.Adam(model.parameters(), lr=self.lr)
-        self.criterion = nn.MSELoss() 
+        self.criterion = nn.MSELoss().to(device) 
         
     def train_step(self, state, action, reward, next_state, game_is_over):
         
-        state = torch.tensor(state, dtype= torch.float)
-        next_state = torch.tensor(next_state, dtype=torch.float)
-        action = torch.tensor(action, dtype=torch.float)
-        reward = torch.tensor(reward, dtype=torch.float)
+        state = torch.tensor(state, dtype= torch.float).to(device)
+        next_state = torch.tensor(next_state, dtype=torch.float).to(device)
+        action = torch.tensor(action, dtype=torch.float).to(device)
+        reward = torch.tensor(reward, dtype=torch.float).to(device)
         #(n, x)
         
         if len(state.shape) == 1:
             # (1, x)
             
-            state = torch.unsqueeze(state, 0)
-            next_state = torch.unsqueeze(next_state, 0)
-            action = torch.unsqueeze(action, 0)
-            reward = torch.unsqueeze(reward, 0)
+            state = torch.unsqueeze(state, 0).to(device)
+            next_state = torch.unsqueeze(next_state, 0).to(device)
+            action = torch.unsqueeze(action, 0).to(device)
+            reward = torch.unsqueeze(reward, 0).to(device)
             game_is_over = (game_is_over, )
             
         # 1: Predicted Q values with the current states
@@ -74,9 +75,9 @@ class QTrainer:
         for idx in range(len(game_is_over)):
             Q_new = reward[idx]
             if not game_is_over[idx]:
-                Q_new = reward[idx] + self.gamma * torch.max(self.model(next_state[idx]))
+                Q_new = reward[idx] + self.gamma * torch.max(self.model(next_state[idx])).to(device)
             
-            target[idx][torch.argmax(action).item()] = Q_new    
+            target[idx][torch.argmax(action).to(device).item()] = Q_new    
         
         # 2: Q_new = r + y * max(max_predicted Q value) -> only do this if the game is on 
         # pred.clone()

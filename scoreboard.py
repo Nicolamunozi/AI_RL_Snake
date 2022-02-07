@@ -23,13 +23,13 @@ class ScoreBoard(Turtle):
         
         self.clear()
         self.score+=1
-        self.reward = 10 
+        self.reward = 10
         self.update_scoreboard()
     
     def game_over(self):
         
         self.goto(0,0)
-        self.reward = - 10 
+        self.reward = -10      
         self.write("GAME OVER", align=ALIGNMET, font=FONT)
         
             

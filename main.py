@@ -1,7 +1,6 @@
 
-from snake import Snake, SnakeAI, NORTH, SOUTH, WEST, EAST
-from food import Food
-from scoreboard import ScoreBoard
+from turtle import xcor
+from snake import SnakeAI, NORTH, SOUTH, WEST, EAST
 import random 
 import numpy as np 
 import torch
@@ -9,11 +8,27 @@ from collections import deque
 from model import Linear_Qnet, QTrainer
 from helper import plot
 
+#GPU Configuration:
+# setting device on GPU if available, else CPU
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print('Using device:', device)
+print()
+
+#Additional Info when using cuda
+if device.type == 'cuda':
+    print(torch.cuda.get_device_name(0))
+    print('Memory Usage:')
+    print('Allocated:', round(torch.cuda.memory_allocated(0)/1024**3, 1), 'GB')
+    print('Cached:   ', round(torch.cuda.memory_reserved(0)/1024**3, 1), 'GB')
+
+
+
+
 
 #constants:
 MAX_MEMORY = 100_000
 BATCH_SIZE = 1000
-LR = 0.5
+LR = 0.001
 FOREPSILON = 80
 
         
@@ -42,8 +57,7 @@ class Agent:
         head_current_position = game.snake.head.pos()
         head_current_orientation =  game.snake.head.heading()
         food = game.food
-        food_x = food.pos()[0]
-        food_y = food.pos()[1]
+  
          
         # Points  positions around the head. (tuples) 
         west_point_pos = (head_current_position[0] - 20, head_current_position[1])
@@ -56,6 +70,10 @@ class Agent:
         towards_east = head_current_orientation == EAST
         towards_south = head_current_orientation == SOUTH
         towards_north = head_current_orientation == NORTH
+        
+        #Booleans for food direction:
+        is_not_eating_food = head.distance(food) > 15
+        
         
         #Now is time to use an array of state.
         state = [
@@ -83,11 +101,12 @@ class Agent:
             towards_north, 
             towards_south, 
             
-            #Food Direction: 
-            food_x < head_current_position[0], #food left
-            food_x > head_current_position[0], #food right 
-            food_y > head_current_position[1], #food up
-            food_y < head_current_position[1], #food down      
+            #Food direction:
+            food.xcor() < head.xcor() and is_not_eating_food, # Food to the west
+            food.xcor() > head.xcor() and is_not_eating_food, # Food to the east
+            food.ycor() > head.ycor() and is_not_eating_food, # Food to the north
+            food.ycor() < head.ycor() and is_not_eating_food, # Food to the south
+        
         ]
         #Check if there is danger 
         return  np.array(state, dtype=int) #in this way i get a boolean matrix of state. 
@@ -126,9 +145,9 @@ class Agent:
             t = "random"
 
         else: 
-            state0 =torch.tensor(state, dtype=torch.float)
+            state0 =torch.tensor(state, dtype=torch.float).to(device)
             prediction = self.model(state0)
-            move = torch.argmax(prediction).item()
+            move = torch.argmax(prediction).to(device).item()
             final_move[move] = 1 
             t = "model"
         return final_move, t
@@ -150,6 +169,7 @@ def train():
         #perform move and get new state:
         game_is_over, score, reward = game.play_game(final_move) #review this
         state_new = agent.get_state(game)
+        
         # train short memory 
         
         agent.train_short_memory(state_old, final_move, reward, state_new, game_is_over)
@@ -181,9 +201,12 @@ def train():
             mean_score = total_score / agent.n_games     
             plot_mean_scores.append(mean_score)        
             plot(plot_scores, plot_mean_scores)
-            
-            
 
-train()   
+
+if __name__ == '__main__':
+    train()
+                
         
-        
+
+    
+    
