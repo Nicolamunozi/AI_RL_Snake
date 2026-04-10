@@ -1,212 +1,162 @@
+import random
+from collections import deque
 
-from turtle import xcor
-from snake import SnakeAI, NORTH, SOUTH, WEST, EAST
-import random 
-import numpy as np 
+import numpy as np
 import torch
-from collections import deque 
-from model import Linear_Qnet, QTrainer
+
 from helper import plot
+from model import DEVICE, Linear_Qnet, QTrainer
+from snake import EAST, NORTH, SOUTH, WEST, SnakeAI
 
-#GPU Configuration:
-# setting device on GPU if available, else CPU
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print('Using device:', device)
-print()
-
-#Additional Info when using cuda
-if device.type == 'cuda':
-    print(torch.cuda.get_device_name(0))
-    print('Memory Usage:')
-    print('Allocated:', round(torch.cuda.memory_allocated(0)/1024**3, 1), 'GB')
-    print('Cached:   ', round(torch.cuda.memory_reserved(0)/1024**3, 1), 'GB')
-
-
-
-
-
-#constants:
 MAX_MEMORY = 100_000
 BATCH_SIZE = 1000
 LR = 0.001
 FOREPSILON = 80
 
-        
+print(f"Using device: {DEVICE}")
+if DEVICE.type == "cuda":
+    print(torch.cuda.get_device_name(0))
+    print("Memory Usage:")
+    print("Allocated:", round(torch.cuda.memory_allocated(0) / 1024**3, 1), "GB")
+    print("Cached:   ", round(torch.cuda.memory_reserved(0) / 1024**3, 1), "GB")
+
+
 class Agent:
-    
     def __init__(self):
         self.n_games = 0
-        self.epsilon = 0 # randomess
-        self.gamma = 0.9  # discount rate
-        self.memory = deque(maxlen=MAX_MEMORY) #pop left 
+        self.epsilon = 0
+        self.gamma = 0.9
+        self.memory = deque(maxlen=MAX_MEMORY)
         self.model = Linear_Qnet(11, 256, 3)
         self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
-    
-    
-    def get_state(self, game): #This is gonna be usefull fpr the IA to understand the game.
-        """
-        TODO: 
-        1) Create points around the head. check.
-        2) Check if there is danger of collision with those points. check 
-        3) Check the direction of movement. check 
-        4) Check where is the food. (to the left, right,  top or bottom) check
-        5) Return a boolean matrix (check).
-        
-        """
+
+    def get_state(self, game: SnakeAI) -> np.ndarray:
         head = game.snake.head
-        head_current_position = game.snake.head.pos()
-        head_current_orientation =  game.snake.head.heading()
+        head_x, head_y = head.pos()
+        heading = head.heading()
         food = game.food
-  
-         
-        # Points  positions around the head. (tuples) 
-        west_point_pos = (head_current_position[0] - 20, head_current_position[1])
-        east_point_pos = (head_current_position[0] + 20, head_current_position[1])
-        south_point_pos = (head_current_position[0], head_current_position[1] - 20)
-        north_point_pos = (head_current_position[0], head_current_position[1] + 20) 
-        
-        # Boleans of direction.
-        towards_west = head_current_orientation == WEST
-        towards_east = head_current_orientation == EAST
-        towards_south = head_current_orientation == SOUTH
-        towards_north = head_current_orientation == NORTH
-        
-        #Booleans for food direction:
-        is_not_eating_food = head.distance(food) > 15
-        
-        
-        #Now is time to use an array of state.
+
+        west_point = (head_x - 20, head_y)
+        east_point = (head_x + 20, head_y)
+        south_point = (head_x, head_y - 20)
+        north_point = (head_x, head_y + 20)
+
+        towards_west = heading == WEST
+        towards_east = heading == EAST
+        towards_south = heading == SOUTH
+        towards_north = heading == NORTH
+
         state = [
-            #Danger Front: 
-            towards_north and game.is_collision(north_point_pos[0], north_point_pos[1]) or 
-            towards_east  and game.is_collision(east_point_pos[0], east_point_pos[1])  or 
-            towards_south and game.is_collision(south_point_pos[0], south_point_pos[1]) or
-            towards_west  and game.is_collision(west_point_pos[0], south_point_pos[1]),
-            
-            #Danger Right:
-            towards_north and game.is_collision(east_point_pos[0], east_point_pos[1]) or 
-            towards_east  and game.is_collision(south_point_pos[0], south_point_pos[1]) or 
-            towards_south and game.is_collision(west_point_pos[0], west_point_pos[1]) or 
-            towards_west  and game.is_collision(north_point_pos[0],north_point_pos[1]),
-             
-            #Danger Left: 
-            towards_north and game.is_collision(west_point_pos[0], west_point_pos[1]) or
-            towards_east  and game.is_collision(north_point_pos[0], north_point_pos[1]) or
-            towards_south and game.is_collision(east_point_pos[0], east_point_pos[1]) or
-            towards_west  and game.is_collision(south_point_pos[0], south_point_pos[1]), 
-            
-            #Move Direction:
+            # Danger straight
+            (towards_north and game.is_collision(*north_point))
+            or (towards_east and game.is_collision(*east_point))
+            or (towards_south and game.is_collision(*south_point))
+            or (towards_west and game.is_collision(*west_point)),
+            # Danger right
+            (towards_north and game.is_collision(*east_point))
+            or (towards_east and game.is_collision(*south_point))
+            or (towards_south and game.is_collision(*west_point))
+            or (towards_west and game.is_collision(*north_point)),
+            # Danger left
+            (towards_north and game.is_collision(*west_point))
+            or (towards_east and game.is_collision(*north_point))
+            or (towards_south and game.is_collision(*east_point))
+            or (towards_west and game.is_collision(*south_point)),
+            # Current direction
             towards_west,
-            towards_east, 
-            towards_north, 
-            towards_south, 
-            
-            #Food direction:
-            food.xcor() < head.xcor() and is_not_eating_food, # Food to the west
-            food.xcor() > head.xcor() and is_not_eating_food, # Food to the east
-            food.ycor() > head.ycor() and is_not_eating_food, # Food to the north
-            food.ycor() < head.ycor() and is_not_eating_food, # Food to the south
-        
+            towards_east,
+            towards_north,
+            towards_south,
+            # Food location relative to head
+            food.xcor() < head.xcor(),
+            food.xcor() > head.xcor(),
+            food.ycor() > head.ycor(),
+            food.ycor() < head.ycor(),
         ]
-        #Check if there is danger 
-        return  np.array(state, dtype=int) #in this way i get a boolean matrix of state. 
-    
+        return np.array(state, dtype=int)
+
     def remember(self, state, action, reward, next_state, game_is_over):
-        
-        self.memory.append((state, action, reward, next_state, game_is_over)) #poplef if MAX_MEMORY
-       
-    
+        self.memory.append((state, action, reward, next_state, game_is_over))
+
     def train_long_memory(self):
-
         if len(self.memory) > BATCH_SIZE:
-            
-            mini_sample = random.sample(self.memory, BATCH_SIZE) 
-        
-        else: 
-            
-            mini_sample = self.memory    
+            mini_sample = random.sample(self.memory, BATCH_SIZE)
+        else:
+            mini_sample = list(self.memory)
 
-        states, actions, rewards, next_states, game_is_ons = zip(*mini_sample)  #This is for getting together all the states, actions, rewards and so on.
-        
-        self.trainer.train_step(states, actions, rewards, next_states, game_is_ons)
+        if not mini_sample:
+            return
 
-    def train_short_memory(self, state, action, reward, next_state, game_is_on):
-        
-        self.trainer.train_step(state, action, reward, next_state, game_is_on)
-            
+        states, actions, rewards, next_states, game_is_overs = zip(*mini_sample)
+        self.trainer.train_step(states, actions, rewards, next_states, game_is_overs)
+
+    def train_short_memory(self, state, action, reward, next_state, game_is_over):
+        self.trainer.train_step(state, action, reward, next_state, game_is_over)
+
     def get_action(self, state):
-        
-        #random moves: tradeoff exploration / exploitation.
-        self.epsilon = FOREPSILON - self.n_games
-        final_move = [0,0,0]
-        if random.randint(0,200) < self.epsilon:
-            move = random.randint(0,2)
-            final_move[move] = 1 
-            t = "random"
+        self.epsilon = max(0, FOREPSILON - self.n_games)
+        final_move = [0, 0, 0]
 
-        else: 
-            state0 =torch.tensor(state, dtype=torch.float).to(device)
+        if random.randint(0, 200) < self.epsilon:
+            move = random.randint(0, 2)
+            source = "random"
+        else:
+            state0 = torch.tensor(state, dtype=torch.float, device=DEVICE)
             prediction = self.model(state0)
-            move = torch.argmax(prediction).to(device).item()
-            final_move[move] = 1 
-            t = "model"
-        return final_move, t
+            move = torch.argmax(prediction).item()
+            source = "model"
+
+        final_move[move] = 1
+        return final_move, source
+
 
 def train():
     plot_scores = []
     plot_mean_scores = []
     total_score = 0
     record = 0
+
     agent = Agent()
     agent.model.load()
     game = SnakeAI()
+
     tm, tr = 0, 0
+
     while True:
-        #get  the old state:
         state_old = agent.get_state(game)
-        #get_move:
-        final_move, t = agent.get_action(state_old)
-        #perform move and get new state:
-        game_is_over, score, reward = game.play_game(final_move) #review this
+        final_move, source = agent.get_action(state_old)
+        game_is_over, score, reward = game.play_game(final_move)
         state_new = agent.get_state(game)
-        
-        # train short memory 
-        
+
         agent.train_short_memory(state_old, final_move, reward, state_new, game_is_over)
-        
-        #remember this.
-        
         agent.remember(state_old, final_move, reward, state_new, game_is_over)
 
-        if t == "random":
-          tr += 1
+        if source == "random":
+            tr += 1
         else:
-          tm += 1      
-          
-        tt = tr+tm
-          
+            tm += 1
+
+        tt = tr + tm
+
         if game_is_over:
-            #train long memory, plot result |
-            game.reset_game()
             agent.n_games += 1
-            agent.train_long_memory() 
-            if score > record: 
-                record = score 
+            agent.train_long_memory()
+
+            if score > record:
+                record = score
                 agent.model.save()
-                
-            print(f"Game: {agent.n_games}. Score: {score}. Record: {record}. %M: {'{:.0%}'.format(tm/tt)}.")    
-            tm, tr = 0, 0    
+
+            print(f"Game: {agent.n_games}. Score: {score}. Record: {record}. %M: {tm / tt:.0%}.")
+
             plot_scores.append(score)
-            total_score += score 
-            mean_score = total_score / agent.n_games     
-            plot_mean_scores.append(mean_score)        
+            total_score += score
+            mean_score = total_score / agent.n_games
+            plot_mean_scores.append(mean_score)
             plot(plot_scores, plot_mean_scores)
 
+            tm, tr = 0, 0
+            game.reset_game()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     train()
-                
-        
-
-    
-    
