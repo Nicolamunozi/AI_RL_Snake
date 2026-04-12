@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3)",
+      "Bash(python -c ':*)",
+      "Bash(pip show:*)",
+      "Bash(pip list:*)",
+      "Bash(conda list:*)",
+      "Bash(conda env:*)",
+      "Bash(conda run:*)",
+      "Read(//c/Users/nicol/miniconda3/envs/**)",
+      "Read(//c/Users/nicol/**)",
+      "Bash(where python:*)",
+      "Bash(python3.11 -c \"import sys; print\\(sys.executable\\)\")"
+    ]
+  }
+}
